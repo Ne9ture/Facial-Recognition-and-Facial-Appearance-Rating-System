@@ -1,0 +1,311 @@
+
+```{r 1.1}
+#初始化和导入库
+rm(list = ls())
+library(RSpectra)
+library(jpeg)
+library(animation)
+#设置工作目录和读取路径
+setwd("C:/Users/zz/Desktop/svd")
+```
+
+```{r 1.2}
+# 图像预处理
+r <- 0.299
+g <- 0.587
+b <- 0.114
+
+# 读取图片，训练集是1000张图片
+# 获取训练集目录中的所有文件名
+train_files <- list.files("C:/Users/zz/Desktop/svd/training1000/", pattern = "\\.jpg$", full.names = TRUE)
+
+for(file_path in train_files) {
+  # 根据文件名决定新文件名
+  file_name <- basename(file_path)
+  if(grepl("^AF", file_name)) {
+    # 女性图片以"AF"开头
+    new_file_name <- paste0("new_", file_name)
+  } else if(grepl("^AM", file_name)) {
+    # 男性图片以"AM"开头
+    new_file_name <- paste0("new_", file_name)
+  } else {
+    next  # 如果文件名不符合规则，则跳过此文件
+  }
+  
+  new_file_path <- paste0("C:/Users/zz/Desktop/svd/training_new1000/", new_file_name)
+
+ # 读取并处理图片
+  if(file.exists(file_path)) {
+    pic <- readJPEG(file_path)
+    R <- pic[,,1]
+    G <- pic[,,2]
+    B <- pic[,,3]
+    new_pic <- r * R + g * G + b * B  # 灰度转换
+    # 不再需要垂直翻转
+    # new_pic <- apply(new_pic, 2, rev)
+    # 将转化后的灰度图导出为.jpg
+    writeJPEG(new_pic, new_file_path)   
+  } else {
+    cat("File not found:", file_path, "\n")
+  }
+}
+
+
+```
+
+```{r 1.3}
+# 创建训练数据矩阵
+
+# 假设每张图片的尺寸是 height x width
+height <- 350  # 替换为您图片的实际高度
+width <- 350   # 替换为您图片的实际宽度
+
+# 获取训练集目录中的所有文件名
+train_files <- list.files("C:/Users/zz/Desktop/svd/training_new1000/", pattern = "\\.jpg$", full.names = TRUE)
+
+# 确保文件数量与预定义的矩阵大小一致
+if(length(train_files) != 1000) {
+  stop("Number of files does not match the predefined matrix size.")
+}
+
+train <- matrix(0, nrow = length(train_files), ncol = height * width)
+
+# 创建性别矩阵
+sex <- numeric(length(train_files))
+
+# 读取图片
+for(j in 1:length(train_files)) {
+  file_name <- basename(train_files[j])
+  
+  # 判断性别并读取图片
+  if(grepl("^new_AF", file_name)) {
+    sex[j] <- 0  # 女性图片以"new_AF"开头
+  } else if(grepl("^new_AM", file_name)) {
+    sex[j] <- 1  # 男性图片以"new_AM"开头
+  } else {
+    cat("Skipping file with unrecognized pattern:", file_name, "\n")
+    next  # 如果文件名不符合规则，则跳过此文件
+  }
+
+  file_path <- train_files[j]
+
+  if(file.exists(file_path)) {
+    ma <- readJPEG(file_path)
+    train[j,] <- as.vector(t(ma))
+  } else {
+    cat("File not found:", file_path, "\n")
+  }
+}
+
+str(train)
+sex <- matrix(sex, ncol = 1)
+
+```
+
+```{r 1.4}
+# 计算性别平均图像
+
+male_female <- 0:1
+pic_mean <- matrix(0, height * width, 2)
+for (k in male_female) {
+  index <- (sex == k)  # 修改这里，以匹配sex矩阵的布尔索引
+  imgi <- train[index, , drop = FALSE] # 定位男女在训练样本图像矩阵的行，并提取出来
+  imgi.mean <- colMeans(imgi) # 求该性别对应的训练集在各行的平均值，作为该性别的对比值
+  pic_mean[, k + 1] <- imgi.mean   # 将各性别的图像矩阵（平均值）放入 pic_mean 矩阵中
+}
+
+par(mfrow = c(1, 2)) # 画出基于训练集的男女平均脸
+for (i in 1:2) {
+  image(matrix(pic_mean[, i], ncol = width), col = gray(0:255/255), axes = FALSE)
+}
+
+```
+
+```{r 1.5}
+library(jpeg)
+
+# 处理测试集图像
+r <- 0.299
+g <- 0.587
+b <- 0.114
+
+# 假设每张图片的尺寸是 height x width
+height <- 350  # 替换为您图片的实际高度
+width <- 350   # 替换为您图片的实际宽度
+
+# 指定处理的图像数量
+test_num <- 25  # 您可以根据需要修改这个数字
+
+test_img <- matrix(0, nrow = test_num, ncol = height * width)
+test_dir <- "C:/Users/zz/Desktop/svd/BSC/"  # 测试图片所在目录
+test_num<-25
+test_files <- list.files(test_dir, pattern = "\\.jpg$", full.names = TRUE)
+test_files <- test_files[1:min(test_num, length(test_files))]
+
+
+
+for(i in 1:length(test_files)) {
+  file_path <- test_files[i]
+  if(file.exists(file_path)) {
+    pic <- readJPEG(file_path)
+    R <- pic[,,1]
+    G <- pic[,,2]
+    B <- pic[,,3]
+    new_pic <- r * R + g * G + b * B  # 灰度转换
+    # 只进行垂直翻转
+    new_pic <- apply(t(new_pic), 2, rev)
+    test_img[i,] <- as.vector(new_pic)
+  } else {
+    cat("Test file not found:", file_path, "\n")
+  }
+}
+
+
+```
+
+```{r 1.6}
+# 提前计算训练集的 SVD
+train_svd <- lapply(0:1, function(gender) svd(t(train[sex[, 1] == gender, , drop = FALSE])))
+
+# 修改后的 image_recognition 函数
+image_recognition <- function(test) {
+  resid.norm <- matrix(NA, 2, 1, dimnames = list(0:1, "resid"))
+  for (i in 0:1) {
+    img.matSVD <- train_svd[[i+1]]
+    basis.max <- 30
+    resid.norm[i+1, ] <- norm(matrix(lm(test ~ 0 + img.matSVD$u[, 1:basis.max])$resid), "F")
+  }
+  rec_sex <- match(min(resid.norm), resid.norm)
+  return(rec_sex-1)
+}
+
+```
+
+```{r 1.7}
+# 假设您已经在前面的代码中定义了 test_files 和 test_num
+
+# 初始化向量来保存性别预测和图片名称
+sex_test <- vector("character", test_num)  # 用来保存性别预测结果
+names_test <- vector("character", test_num)  # 用来保存对应的图片名称
+
+# 性别识别测试，添加进度输出和图片名称记录
+system.time({
+  for(m in 1:test_num) {
+    cat("Processing image", m, "/", test_num, ":", basename(test_files[m]), "\n")
+    # 保存当前处理的图片名称
+    names_test[m] <- basename(test_files[m])
+    
+    # 进行性别识别
+    predicted_gender <- image_recognition(test_img[m,])
+    sex_test[m] <- ifelse(predicted_gender == 1, "男", "女")
+  }
+})
+
+# 将图片名称和性别预测结果合并成一个数据框
+results <- data.frame(Name = names_test, Gender = sex_test)
+print(results)
+
+
+```
+
+```{r 1.8}
+#SVD分解和可视化
+train.svd <- svd(train)
+str(train.svd)
+u <- train.svd$u
+par(mfrow = c(1,2))
+plot(1:length(train.svd$d), train.svd$d, xlab="i-th sigma", ylab="sigma", main="Singular Values")
+plot(1:length(train.svd$d), cumsum(train.svd$d)/sum(train.svd$d), main="Cumulative Percent of Total Sigmas")
+data1 <- as.data.frame(u[,1:25])
+
+```
+
+```{r 1.9}
+#逻辑回归分析
+# 确保 sex 是一个向量且与 data1 的行数相匹配
+# 假设 sex 是原始性别数据的向量
+# 检查长度
+if(length(sex) != nrow(data1)) {
+  stop("Length of 'sex' and 'data1' do not match.")
+}
+
+# 逻辑回归分析
+logis <- glm(sex ~ ., data = data1, family = "binomial")
+summary(logis)
+
+```
+
+```{r 1.10}
+#欧几里得距离计算函数
+sex.true <- sapply(test_files, function(filename) {
+  if (grepl("^AF", basename(filename))) {
+    return(0) # 假设 "AF" 表示女性
+  } else if (grepl("^AM", basename(filename))) {
+    return(1) # 假设 "AM" 表示男性
+  } else {
+    return(NA) # 如果不符合上述模式，返回NA
+  }
+})
+
+
+#计算两个矩阵的欧几里德距离
+ec.distance <- function(X, Y) {
+  dim.X <- dim(X)
+  dim.Y <- dim(Y)
+  sum.X <- matrix(rowSums(X^2), dim.X[1], dim.Y[1])
+  sum.Y <- matrix(rowSums(Y^2), dim.X[1], dim.Y[1], byrow = TRUE)
+  dist0 <- sum.X + sum.Y - 2 * tcrossprod(X, Y)
+  out <- sqrt(dist0)
+  return(out)
+}
+```
+
+```{r 1.11}
+#测试集与平均脸部图像的距离计算
+
+#对于未知性别的人脸图像，比较它与男女图像平均值的距离
+test.sample <- 1:test_num
+
+#计算测试集到训练集平均值的距离
+system.time(test.distance <- ec.distance(test_img[test.sample, ], t(pic_mean)))
+rec.result <- apply(test.distance, 1, which.min) - 1
+rate <- length(rec.result[sex.true == rec.result])/test_num ;rate
+
+#将训练集与测试集合并后进行SVD分解，矩阵降维后再进行logistic回归拟合
+pics <- rbind(train, test_img)
+pics.svd.u <- svd(pics)$u
+train.svd.u <- pics.svd.u[1:1000,]  #取出训练集对应的u矩阵部分
+x <- cbind(rep(1, test_num), pics.svd.u[(1000+1):(1000+test_num), ])
+
+```
+
+```{r 1.12}
+#逻辑回归性能评估
+# 假设 train.svd.u 包含了训练集的 SVD 分量
+# 假设 sex_vector 包含了训练集的性别标签
+sex_vector <- sex[1:1000, ]
+
+# 确保 sex_vector 与 train.svd.u 的长度相匹配
+if(nrow(train.svd.u) != length(sex_vector)) {
+  stop("Length of 'sex_vector' and 'train.svd.u' do not match.")
+}
+rec <- matrix(0, 30, 1)  # 修改为考虑 30 个 SVD 分量
+system.time(for (i in 1:30) {  # 循环范围改为 1 到 30
+  if (i <= ncol(x) - 1) {
+    logistic.fit <- glm(sex_vector ~ train.svd.u[, 1:i], family = binomial)
+
+    beta <- matrix(logistic.fit$coefficients, 1)
+    ind <- i + 1
+    X <- t(x)[1:ind,]
+    respond <- beta %*% X
+    p <- exp(respond)/(1+exp(respond))
+    c1 <- p[sex.true == 0] < 0.5
+    c2 <- p[sex.true == 1] >= 0.5
+    rec[i,] <- (sum(c1)+sum(c2))/test_num
+  } else {
+    rec[i,] <- NA  # 如果超出了 x 的列数，则赋值为 NA
+  }
+})
+t(rec)
+
+```

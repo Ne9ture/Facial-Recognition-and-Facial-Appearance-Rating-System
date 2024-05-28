@@ -1,0 +1,424 @@
+---
+title: "Untitled"
+author: "庞熙芃"
+date: "2023-12-22"
+output: html_document
+---
+1.
+```{r}
+library(jpeg)
+
+# 设置读取路径为你的图片文件路径
+setwd("/Users/mac/Desktop/Images/Images2")
+
+# 定义灰度转换的系数
+r <- 0.299
+g <- 0.587
+b <- 0.114
+
+# 假设每个性别各有2000张图片
+num_images_per_gender <- 500
+
+# 读取第一张图片以获取图片尺寸
+first_pic <- readJPEG("AF1.jpg")
+pic_dim <- dim(first_pic)
+vec_length <- pic_dim[1] * pic_dim[2]
+
+# 创建一个空矩阵用于存储训练集图片数据
+train <- matrix(0, nrow = num_images_per_gender * 2, ncol = vec_length)
+
+# 读取图片
+for(i in 1:(num_images_per_gender * 2)) {
+  # 构造文件名
+  if (i <= num_images_per_gender) {
+    filename <- sprintf("AF%d.jpg", i)  # 女生图片
+  } else {
+    filename <- sprintf("AM%d.jpg", i - num_images_per_gender)  # 男生图片
+  }
+
+  pic <- readJPEG(filename)
+  R <- pic[,,1]
+  G <- pic[,,2]
+  B <- pic[,,3]
+  new_pic <- r * R + g * G + b * B   # 通过灰度进行图像转化
+
+  # 将处理后的图片数据存入训练集矩阵
+  train[i,] <- as.vector(t(new_pic))
+}
+# 检查 train 矩阵的结构
+print(dim(train))
+
+
+```
+
+1.2
+```{r}
+# 查看 ratings_data 中的前几个文件名
+print(head(ratings_data$Filename))
+```
+
+
+2.
+```{r}
+# 读取包含图片名和颜值评分的 TXT 文件
+ratings_file <- "/Users/mac/Desktop/Images/All_Labels.txt"  # 文件路径
+ratings_data <- read.table(ratings_file, sep = " ", header = FALSE, col.names = c("Filename", "Rating"))
+
+# 初始化一个向量来存储颜值评分
+ratings_vector <- numeric(num_images_per_gender * 2)
+
+# 将评分数据与图片数据关联
+for(i in 1:(num_images_per_gender * 2)) {
+  if (i <= num_images_per_gender) {
+    filename <- sprintf("AF%d.jpg", i)  # 女生图片文件名
+  } else {
+    filename <- sprintf("AM%d.jpg", i - num_images_per_gender)  # 男生图片文件名
+  }
+
+  # 查找与当前文件名对应的评分
+  rating_for_file <- ratings_data$Rating[ratings_data$Filename == filename]
+  if (length(rating_for_file) == 1) {
+    ratings_vector[i] <- rating_for_file
+  } else {
+    ratings_vector[i] <- NA  # 如果找不到评分，则设置为NA
+  }
+}
+
+# 检查 ratings_vector
+print(length(ratings_vector))
+print(head(ratings_vector))  # 打印前几个评分
+
+```
+
+
+```{r}
+# 可视化部分数据
+# 可以选择展示几张图片及其对应的评分
+library(grid)
+library(jpeg)
+
+# 选择展示的图片数量
+num_to_display <- 10
+
+# 创建绘图布局
+grid.newpage()
+pushViewport(viewport(layout = grid.layout(num_to_display, 2)))
+
+
+# 检查 ratings_vector
+print(length(ratings_vector))
+print(head(ratings_vector))  # 打印前几个评分
+
+# 可视化部分数据
+# 可以选择展示几张图片及其对应的评分
+library(grid)
+library(jpeg)
+
+# 选择展示的图片数量
+num_to_display <- 10
+
+# 创建绘图布局
+grid.newpage()
+pushViewport(viewport(layout = grid.layout(num_to_display, 2)))
+
+for (i in 1:num_to_display) {
+  # 绘制图片
+  img_matrix <- matrix(train[i, ], nrow = sqrt(ncol(train)), ncol = sqrt(ncol(train)))
+  grid.raster(img_matrix, vp = viewport(layout.pos.row = i, layout.pos.col = 1))
+
+  # 显示对应的评分
+  grid.text(paste("Rating:", ratings_vector[i]), vp = viewport(layout.pos.row = i, layout.pos.col = 2))
+}
+
+```
+
+3.
+```{r}
+library(randomForest)
+library(stats)
+
+# PCA降维
+pca_result <- prcomp(train, scale. = TRUE)
+num_components <- 50  # 可以调整这个值
+train_reduced <- pca_result$x[, 1:num_components]
+# 移除含有NA评分的行
+valid_indices <- !is.na(ratings_vector)
+train_clean <- train[valid_indices, ]
+ratings_clean <- ratings_vector[valid_indices]
+# 将评分转换为因子类型
+ratings_factor <- as.factor(ratings_vector)
+
+# 使用随机森林模型
+set.seed(123)  # 设置随机种子以获得可重复的结果
+rf_model <- randomForest(train_reduced, ratings_factor, ntree=100)
+
+# 查看模型摘要
+#print(rf_model)
+```
+4.
+```{r}
+# 数据集划分
+set.seed(123)  # 为了可重复性
+train_index <- sample(1:nrow(train), 0.8 * nrow(train))
+test_index <- setdiff(1:nrow(train), train_index)
+
+train_data <- train_reduced[train_index, ]
+test_data <- train_reduced[test_index, ]
+
+train_labels <- ratings_factor[train_index]
+test_labels <- ratings_factor[test_index]
+
+# 确保目标变量是数值型
+if (is.factor(train_labels)) {
+    train_labels <- as.numeric(as.character(train_labels))
+}
+
+# 检查并处理NA值
+if (any(is.na(train_labels))) {
+    # 可以选择删除含有NA的行或者用其他值填充
+    train_data <- train_data[!is.na(train_labels), ]
+    train_labels <- train_labels[!is.na(train_labels)]
+}
+
+# 重新训练随机森林模型
+rf_model <- randomForest(x = train_data, y = train_labels, ntree = 100)
+
+# 预测
+predictions <- predict(rf_model, test_data)
+
+importance <- importance(rf_model)
+varImpPlot(rf_model)
+
+```
+5.
+```{r}
+# 假设已经有了变量 importance，它包含了特征的重要性
+# 确定要保留的特征数量
+num_features_to_select <- 30
+
+# 选择最重要的特征
+important_features <- head(order(importance, decreasing = TRUE), num_features_to_select)
+
+# 创建一个新的训练集和测试集，仅包含这些重要的特征
+train_data_selected <- train_data[, important_features]
+test_data_selected <- test_data[, important_features]
+
+# 使用选择的特征重新训练随机森林模型
+rf_model_selected <- randomForest(x = train_data_selected, y = train_labels, ntree = 100)
+# 使用交叉验证来寻找最佳的 mtry 值
+library(caret)
+tune_grid <- expand.grid(mtry = seq(2, num_features_to_select, by = 1))
+control <- trainControl(method = "cv", number = 5)
+tune_result <- train(x = train_data_selected, y = train_labels, method = "rf", 
+                     tuneGrid = tune_grid, trControl = control)
+best_mtry <- tune_result$bestTune$mtry
+
+# 使用最佳的 mtry 值重新训练随机森林模型
+rf_model_tuned <- randomForest(x = train_data_selected, y = train_labels, 
+                               mtry = best_mtry, ntree = 500)
+# 假设 train_data 和 test_data 是原始数据集
+# 归一化数据
+train_data_normalized <- scale(train_data)
+test_data_normalized <- scale(test_data, center = attr(train_data_normalized, "scaled:center"), 
+                              scale = attr(train_data_normalized, "scaled:scale"))
+
+# 使用归一化的数据重新训练模型
+rf_model_normalized <- randomForest(x = train_data_normalized, y = train_labels, ntree = 100)
+
+```
+6.
+```{r}
+# 查看模型摘要
+print(rf_model_normalized)
+```
+
+
+7.
+```{r}
+library(jpeg)
+
+# 读取单个图片文件
+image_path <- "/Users/mac/Desktop/test/AM1837.JPG"
+image <- readJPEG(image_path)
+
+# 将图片转换为灰度图像（如果训练数据是灰度的）
+r <- 0.299
+g <- 0.587
+b <- 0.114
+gray_image <- r * image[,,1] + g * image[,,2] + b * image[,,3]
+
+# 将图片转换为与训练数据相同格式的向量
+image_vector <- as.vector(t(gray_image))
+
+# 应用PCA降维到单个图片
+image_reduced <- predict(pca_result, newdata = matrix(image_vector, nrow = 1))[, 1:num_components]
+
+# 使用随机森林模型进行预测
+predicted_rating <- predict(rf_model_normalized, newdata = image_reduced)
+
+# 打印预测结果
+print(paste("Predicted Rating:", predicted_rating))
+
+
+```
+
+8.
+```{r}
+library(jpeg)
+
+# 初始化一个空的数据框来存储结果
+results <- data.frame(Filename = character(), Score_Percentage = numeric(), stringsAsFactors = FALSE)
+
+# 获取文件夹下所有JPG图片的路径
+photo_directory <- "/Users/Mac/Desktop/BSC照片"
+photo_paths <- list.files(photo_directory, pattern = "\\.jpg$", full.names = TRUE)
+
+# 定义灰度转换的系数
+r <- 0.299
+g <- 0.587
+b <- 0.114
+
+# 遍历所有图片，进行预测，并填充数据框
+for(image_path in photo_paths) {
+    # 读取单个图片文件
+    image <- readJPEG(image_path)
+
+    # 将图片转换为灰度图像
+    gray_image <- r * image[,,1] + g * image[,,2] + b * image[,,3]
+
+    # 将图片转换为向量
+    image_vector <- as.vector(t(gray_image))
+
+    # 应用PCA降维到单张图片
+    image_reduced <- predict(pca_result, newdata = matrix(image_vector, nrow = 1))[, 1:num_components]
+
+    # 使用随机森林模型进行预测
+    predicted_rating <- predict(rf_model_normalized, newdata = image_reduced)
+
+    # 确保预测结果为数值类型
+    if(is.factor(predicted_rating)) {
+        predicted_rating <- as.numeric(levels(predicted_rating))[predicted_rating]
+    }
+
+    # 将评分转换为百分制
+    score_percentage <- (predicted_rating) / 5 * 100
+
+    # 获取图片文件名
+    file_name <- basename(image_path)
+
+    # 将结果添加到数据框
+    results <- rbind(results, data.frame(Filename = file_name, Score_Percentage = score_percentage))
+}
+
+# 显示结果
+print(results)
+
+```
+
+
+
+#1
+```{r}
+# 检查训练数据的维度
+nrows <- nrow(train)
+ncols <- ncol(train)
+
+# 确保主成分的数量小于数据维度的最小值
+num_components <- min(nrows, ncols) - 1
+
+# 使用标准SVD进行降维
+svd_result <- svd(train)
+train_reduced <- svd_result$u[, 1:num_components] %*% diag(svd_result$d[1:num_components])
+
+# 移除含有NA评分的行
+valid_indices <- !is.na(ratings_vector)
+train_clean <- train[valid_indices, ]
+ratings_clean <- ratings_vector[valid_indices]
+
+# 将评分转换为因子类型
+ratings_factor <- as.factor(ratings_clean)
+```
+
+
+```{r}
+# 使用随机森林回归模型
+library(randomForest)
+rf_model <- randomForest(x = train_reduced, y = ratings_factor, ntree = 100)
+
+# 查看模型摘要
+print(rf_model)
+```
+
+
+```{r}
+library(xgboost)
+# 确保标签从0开始并转换为整数
+ratings_factor_numeric <- as.integer(as.factor(ratings_factor)) - 1
+
+# 重新准备数据
+dtrain <- xgb.DMatrix(data = train_reduced, label = ratings_factor_numeric)
+
+# 确保num_class参数设置正确
+num_classes <- length(unique(ratings_factor_numeric))
+params <- list(
+  objective = "multi:softprob",
+  num_class = num_classes,
+  eval_metric = "mlogloss"
+)
+
+# 重新训练模型
+xgb_model <- xgb.train(params = params, data = dtrain, nrounds = 100)
+
+# 查看模型摘要
+print(xgb_model)
+
+```
+
+#
+```{r}
+library(jpeg)
+
+# 读取测试图片
+test_image_path <- "/Users/Mac/Desktop/test/AM1837.JPG"
+test_image <- readJPEG(test_image_path)
+
+# 确保测试图片尺寸与训练集一致
+# 这假设您的训练图片是方形的
+test_image_resized <- test_image[1:pic_dim[1], 1:pic_dim[2], ]
+
+# 灰度转换
+test_image_gray <- r * test_image_resized[,,1] + g * test_image_resized[,,2] + b * test_image_resized[,,3]
+
+# 向量化
+test_image_vector <- as.vector(t(test_image_gray))
+
+# 检查尺寸一致性
+if (length(test_image_vector) != vec_length) {
+    stop("The size of the test image vector does not match the size of the training image vectors.")
+}
+
+library(xgboost)
+
+# 应用SVD降维到单张图片
+num_components_svd <- min(ncol(svd_result$u), num_components)
+image_reduced_svd <- svd_result$u[, 1:num_components_svd] %*% matrix(test_image_vector, nrow = ncol(svd_result$u), ncol = 1)
+# 将降维后的数据转换为XGBoost的数据格式
+dtest <- xgb.DMatrix(data = t(image_reduced_svd))
+
+# 使用XGBoost模型进行预测
+predicted_rating_xgb <- predict(xgb_model, dtest)
+
+# 打印预测结果
+print(paste("Predicted Rating:", predicted_rating_xgb))
+
+```
+
+
+
+
+
+
+
+
+
+

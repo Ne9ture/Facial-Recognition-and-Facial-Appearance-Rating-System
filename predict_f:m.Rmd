@@ -1,0 +1,449 @@
+---
+title: "Untitled"
+author: "pxp"
+date: "2023-12-30"
+output: html_document
+---
+
+```{r}
+library(jpeg)
+
+# 设置读取路径为你的图片文件路径
+setwd("/Users/mac/Desktop/Images 1/Images2")
+
+# 定义灰度转换的系数
+r <- 0.299
+g <- 0.587
+b <- 0.114
+
+# 每个性别的图片数量
+num_images_per_gender <- 1000
+
+# 读取第一张图片以获取图片尺寸
+first_pic <- readJPEG("AF1.jpg")
+pic_dim <- dim(first_pic)
+vec_length <- pic_dim[1] * pic_dim[2]
+
+# 创建两个空矩阵用于存储男性和女性的训练集图片数据
+train_female <- matrix(0, nrow = num_images_per_gender, ncol = vec_length)
+train_male <- matrix(0, nrow = num_images_per_gender, ncol = vec_length)
+
+# 读取女性图片
+for(i in 1:num_images_per_gender) {
+  filename <- sprintf("AF%d.jpg", i)  # 女性图片
+  pic <- readJPEG(filename)
+  gray_pic <- r * pic[,,1] + g * pic[,,2] + b * pic[,,3]  # 灰度转换
+  train_female[i,] <- as.vector(t(gray_pic))
+}
+
+# 读取男性图片
+for(i in 1:num_images_per_gender) {
+  filename <- sprintf("AM%d.jpg", i)  # 男性图片
+  pic <- readJPEG(filename)
+  gray_pic <- r * pic[,,1] + g * pic[,,2] + b * pic[,,3]  # 灰度转换
+  train_male[i,] <- as.vector(t(gray_pic))
+}
+
+# 读取评分文件
+ratings_file <- "/Users/mac/Desktop/Images/All_Labels.txt"
+ratings_data <- read.table(ratings_file, sep = " ", header = FALSE, col.names = c("Filename", "Rating"))
+
+# 初始化两个向量来存储男性和女性的评分
+ratings_female <- numeric(num_images_per_gender)
+ratings_male <- numeric(num_images_per_gender)
+
+# 关联女性图片的评分
+for(i in 1:num_images_per_gender) {
+  filename <- sprintf("AF%d.jpg", i)
+  rating <- ratings_data$Rating[ratings_data$Filename == filename]
+  ratings_female[i] <- ifelse(length(rating) == 1, rating, NA)
+}
+
+# 关联男性图片的评分
+for(i in 1:num_images_per_gender) {
+  filename <- sprintf("AM%d.jpg", i)
+  rating <- ratings_data$Rating[ratings_data$Filename == filename]
+  ratings_male[i] <- ifelse(length(rating) == 1, rating, NA)
+}
+
+# 检查结构
+print(dim(train_female))
+print(dim(train_male))
+print(length(ratings_female))
+print(length(ratings_male))
+
+```
+
+
+```{r}
+# 假设 train_female, train_male, ratings_female, ratings_male 已经定义好
+
+# 初始化存储不同评分平均图像的矩阵
+pic_mean_ratings_female <- matrix(0, nrow = ncol(train_female), ncol = 5)  # 女性的5个评分等级
+pic_mean_ratings_male <- matrix(0, nrow = ncol(train_male), ncol = 5)     # 男性的5个评分等级
+
+# 计算每个评分等级的女性图像平均值
+for (rating in 2:4) {
+  index <- which(ratings_female == rating)
+  if (length(index) > 0) {
+    imgi <- train_female[index, , drop = FALSE]
+    imgi.mean <- colMeans(imgi)
+    pic_mean_ratings_female[, rating] <- imgi.mean
+  }
+}
+
+# 计算每个评分等级的男性图像平均值
+for (rating in 2:4) {
+  index <- which(ratings_male == rating)
+  if (length(index) > 0) {
+    imgi <- train_male[index, , drop = FALSE]
+    imgi.mean <- colMeans(imgi)
+    pic_mean_ratings_male[, rating] <- imgi.mean
+  }
+}
+
+# 设置图形输出参数，准备绘制图像
+par(mfrow = c(2, 3))
+
+# 绘制女性每个评分等级的平均脸
+for (i in 2:4) {
+  image(matrix(pic_mean_ratings_female[, i], nrow = sqrt(ncol(train_female)), ncol = sqrt(ncol(train_female))),
+        col = gray(0:255/255), main = paste("Female Rating", i))
+}
+
+# 绘制男性每个评分等级的平均脸
+for (i in 2:4) {
+  image(matrix(pic_mean_ratings_male[, i], nrow = sqrt(ncol(train_male)), ncol = sqrt(ncol(train_male))),
+        col = gray(0:255/255), main = paste("Male Rating", i))
+}
+
+
+```
+
+
+```{r}
+library(grid)
+library(jpeg)
+
+# 选择展示的图片数量（总共）
+num_to_display <- 10  # 总共展示的图片数量
+
+# 确保 num_to_display 是偶数，因为我们要展示相等数量的男女图片
+num_to_display <- ifelse(num_to_display %% 2 == 0, num_to_display, num_to_display - 1)
+
+# 每个性别展示的图片数量
+num_per_gender <- num_to_display / 2
+
+# 创建绘图布局
+grid.newpage()
+pushViewport(viewport(layout = grid.layout(num_to_display, 2)))
+
+for (i in 1:num_per_gender) {
+  # 绘制女性图片
+  img_matrix_female <- matrix(train_female[i, ], nrow = sqrt(ncol(train_female)), ncol = sqrt(ncol(train_female)))
+  grid.raster(img_matrix_female, vp = viewport(layout.pos.row = i * 2 - 1, layout.pos.col = 1))
+  # 显示女性图片对应的评分
+  grid.text(paste("Female Rating:", ratings_female[i]), vp = viewport(layout.pos.row = i * 2 - 1, layout.pos.col = 2))
+
+  # 绘制男性图片
+  img_matrix_male <- matrix(train_male[i, ], nrow = sqrt(ncol(train_male)), ncol = sqrt(ncol(train_male)))
+  grid.raster(img_matrix_male, vp = viewport(layout.pos.row = i * 2, layout.pos.col = 1))
+  # 显示男性图片对应的评分
+  grid.text(paste("Male Rating:", ratings_male[i]), vp = viewport(layout.pos.row = i * 2, layout.pos.col = 2))
+}
+# 检查女性评分向量的长度和前几个评分
+print(length(ratings_female))
+print(head(ratings_female))
+
+# 检查男性评分向量的长度和前几个评分
+print(length(ratings_male))
+print(head(ratings_male))
+```
+
+
+```{r}
+library(randomForest)
+library(stats)
+
+# 修改perform_pca函数以返回PCA模型和降维后的数据
+perform_pca <- function(data, num_components) {
+  pca_result <- prcomp(data, scale. = TRUE)
+  data_reduced <- pca_result$x[, 1:num_components]
+  return(list(model = pca_result, reduced = data_reduced))
+}
+
+# 应用PCA并保存模型和降维数据 - 女性数据
+pca_female <- perform_pca(train_female, num_components = 50)
+train_female_reduced <- pca_female$reduced
+pca_result_female <- pca_female$model  # PCA模型
+
+# 应用PCA并保存模型和降维数据 - 男性数据
+pca_male <- perform_pca(train_male, num_components = 50)
+train_male_reduced <- pca_male$reduced
+pca_result_male <- pca_male$model  # PCA模型
+
+# 移除含有NA评分的行 - 女性数据
+valid_indices_female <- !is.na(ratings_female)
+train_female_clean <- train_female_reduced[valid_indices_female, ]
+ratings_female_clean <- ratings_female[valid_indices_female]
+
+# 移除含有NA评分的行 - 男性数据
+valid_indices_male <- !is.na(ratings_male)
+train_male_clean <- train_male_reduced[valid_indices_male, ]
+ratings_male_clean <- ratings_male[valid_indices_male]
+
+# 将评分转换为因子类型 - 女性数据
+ratings_female_factor <- as.factor(ratings_female_clean)
+
+# 将评分转换为因子类型 - 男性数据
+ratings_male_factor <- as.factor(ratings_male_clean)
+
+# 使用随机森林模型 - 女性数据
+set.seed(123)
+rf_model_female <- randomForest(train_female_clean, ratings_female_factor, ntree=100)
+
+# 使用随机森林模型 - 男性数据
+set.seed(123)
+rf_model_male <- randomForest(train_male_clean, ratings_male_factor, ntree=100)
+
+```
+
+
+```{r}
+library(randomForest)
+library(stats)
+
+# 使用之前的 perform_pca 函数
+perform_pca <- function(data, num_components) {
+  pca_result <- prcomp(data, scale. = TRUE)
+  data_reduced <- pca_result$x[, 1:num_components]
+  return(list(model = pca_result, reduced = data_reduced))
+}
+
+# 应用PCA - 女性数据
+pca_female <- perform_pca(train_female, num_components = 50)
+train_female_reduced <- pca_female$reduced
+
+# 应用PCA - 男性数据
+pca_male <- perform_pca(train_male, num_components = 50)
+train_male_reduced <- pca_male$reduced
+
+# 移除含有NA评分的行
+valid_indices_female <- !is.na(ratings_female)
+train_female_clean <- train_female_reduced[valid_indices_female, ]
+ratings_female_clean <- ratings_female[valid_indices_female]
+
+valid_indices_male <- !is.na(ratings_male)
+train_male_clean <- train_male_reduced[valid_indices_male, ]
+ratings_male_clean <- ratings_male[valid_indices_male]
+
+# 使用随机森林进行回归 - 女性数据
+rf_model_female <- randomForest(train_female_clean, y = ratings_female_clean, ntree = 100)
+
+# 使用随机森林进行回归 - 男性数据
+rf_model_male <- randomForest(train_male_clean, y = ratings_male_clean, ntree = 100)
+
+# 查看随机森林模型摘要
+print(rf_model_female)
+print(rf_model_male)
+```
+
+```{r}
+
+pca_result_female <- pca_female$model  # PCA模型
+
+pca_result_male <- pca_male$model  # PCA模型
+
+```
+
+
+```{r}
+library(jpeg)
+library(randomForest)
+
+# 初始化一个空的数据框来存储结果
+results <- data.frame(Filename = character(), Gender = character(), Score_Percentage = numeric(), stringsAsFactors = FALSE)
+
+# 获取文件夹下所有JPG图片的路径
+photo_directory <- "/Users/Mac/Desktop/test"
+photo_paths <- list.files(photo_directory, pattern = "\\.jpg$", full.names = TRUE)
+
+# 定义灰度转换的系数
+r <- 0.299
+g <- 0.587
+b <- 0.114
+
+num_components_female <- 50
+num_components_male <- 50
+
+# 遍历所有图片，进行预测，并填充数据框
+for(image_path in photo_paths) {
+    # 读取单个图片文件
+    image <- readJPEG(image_path)
+
+    # 将图片转换为灰度图像
+    gray_image <- r * image[,,1] + g * image[,,2] + b * image[,,3]
+
+    # 将图片转换为向量
+    image_vector <- as.vector(t(gray_image))
+
+    # 应用PCA降维到单张图片
+    gender_prefix <- substr(basename(image_path), 1, 1)
+    if (gender_prefix == "1") {
+        image_reduced <- predict(pca_result_male, newdata = matrix(image_vector, nrow = 1))[, 1:num_components_male]
+        predicted_rating <- predict(rf_model_male, newdata = image_reduced)
+        gender <- "Male"
+    } else {
+        image_reduced <- predict(pca_result_female, newdata = matrix(image_vector, nrow = 1))[, 1:num_components_female]
+        predicted_rating <- predict(rf_model_female, newdata = image_reduced)
+        gender <- "Female"
+    }
+    # 确保预测结果为数值类型
+    if(is.factor(predicted_rating)) {
+        predicted_rating <- as.numeric(levels(predicted_rating))[predicted_rating]
+    }
+
+    # 将评分转换为百分制
+    score_percentage <- predicted_rating
+    score_percentage_compare <- ((predicted_rating - 2.9)/6) * 100
+    # 获取图片文件名
+    file_name <- basename(image_path)
+    file_name_no_first_char <- substr(file_name, 2, nchar(file_name))
+    file_name_no_ext <- tools::file_path_sans_ext(file_name_no_first_char)
+
+    # 将结果添加到数据框
+    results <- rbind(results, data.frame(Filename = file_name_no_ext, Gender = gender, Score_Percentage = score_percentage,Compare = score_percentage_compare))
+}
+
+# 显示结果
+print(results)
+```
+
+
+```{r}
+library(jpeg)
+library(randomForest)
+
+# 初始化一个空的数据框来存储结果
+results <- data.frame(Filename = character(), Gender = character(), Score_Percentage = numeric(), stringsAsFactors = FALSE)
+
+# 获取文件夹下所有JPG图片的路径
+photo_directory <- "/Users/Mac/Desktop/BSC照片"
+photo_paths <- list.files(photo_directory, pattern = "\\.jpg$", full.names = TRUE)
+
+# 定义灰度转换的系数
+r <- 0.299
+g <- 0.587
+b <- 0.114
+
+num_components_female <- 50
+num_components_male <- 50
+
+# 遍历所有图片，进行预测，并填充数据框
+for(image_path in photo_paths) {
+    # 读取单个图片文件
+    image <- readJPEG(image_path)
+
+    # 将图片转换为灰度图像
+    gray_image <- r * image[,,1] + g * image[,,2] + b * image[,,3]
+
+    # 将图片转换为向量
+    image_vector <- as.vector(t(gray_image))
+
+    # 应用PCA降维到单张图片
+    gender_prefix <- substr(basename(image_path), 1, 1)
+    if (gender_prefix == "1") {
+        image_reduced <- predict(pca_result_male, newdata = matrix(image_vector, nrow = 1))[, 1:num_components_male]
+        predicted_rating <- predict(rf_model_male, newdata = image_reduced)
+        gender <- "Male"
+    } else {
+        image_reduced <- predict(pca_result_female, newdata = matrix(image_vector, nrow = 1))[, 1:num_components_female]
+        predicted_rating <- predict(rf_model_female, newdata = image_reduced)
+        gender <- "Female"
+    }
+    # 确保预测结果为数值类型
+    if(is.factor(predicted_rating)) {
+        predicted_rating <- as.numeric(levels(predicted_rating))[predicted_rating]
+    }
+
+    # 将评分转换为百分制
+    score_percentage <- predicted_rating - 1.0
+    score_percentage_compare <- ((predicted_rating - 2.9)/6) * 100
+    # 获取图片文件名
+    file_name <- basename(image_path)
+    file_name_no_first_char <- substr(file_name, 2, nchar(file_name))
+    file_name_no_ext <- tools::file_path_sans_ext(file_name_no_first_char)
+
+    # 将结果添加到数据框
+    results <- rbind(results, data.frame(Filename = file_name_no_ext, Gender = gender, Score_Percentage = score_percentage,Compare = score_percentage_compare))
+}
+
+# 显示结果
+print(results)
+```
+
+```{r}
+library(jpeg)
+library(grid)
+library(randomForest)
+
+# 定义灰度转换的系数
+r <- 0.299
+g <- 0.587
+b <- 0.114
+
+num_components_female <- 50
+num_components_male <- 50
+
+# 假设 pca_result_male, pca_result_female, rf_model_male, rf_model_female 已经定义好
+
+# 设置图片文件夹路径
+photo_directory <- "/Users/Mac/Desktop/test"
+photo_paths <- list.files(photo_directory, pattern = "\\.jpg$", full.names = TRUE)
+
+# 定义每行展示的图片数量
+num_per_row <- 4
+
+# 遍历所有图片，并展示图片、文件名和评分
+for (i in seq_along(photo_paths)) {
+    if (i %% num_per_row == 1) {
+        grid.newpage()
+        pushViewport(viewport(layout = grid.layout(num_per_row, 2)))
+    }
+
+    # 读取图片
+    image_path <- photo_paths[i]
+    image <- readJPEG(image_path)
+
+    # 处理图片并获得评分
+    gray_image <- r * image[,,1] + g * image[,,2] + b * image[,,3]
+    image_vector <- as.vector(t(gray_image))
+    gender_prefix <- substr(basename(image_path), 1, 1)
+
+    if (gender_prefix == "1") {
+        image_reduced <- predict(pca_result_male, newdata = matrix(image_vector, nrow = 1))[, 1:num_components_male]
+        predicted_rating <- predict(rf_model_male, newdata = image_reduced, type = "response")
+    } else {
+        image_reduced <- predict(pca_result_female, newdata = matrix(image_vector, nrow = 1))[, 1:num_components_female]
+        predicted_rating <- predict(rf_model_female, newdata = image_reduced, type = "response")
+    }
+
+    # 转换评分为百分制
+    score_percentage_compare <- ((predicted_rating - 2.9) / 6) * 100
+
+    # 获取并处理文件名
+    file_name <- basename(image_path)
+    file_name_no_first_char <- substr(file_name, 2, nchar(file_name))
+    file_name_no_ext <- tools::file_path_sans_ext(file_name_no_first_char)
+
+    # 绘制图片
+    grid.raster(image, vp = viewport(layout.pos.row = (i - 1) %% num_per_row + 1, layout.pos.col = 1))
+
+    # 展示处理后的文件名和评分
+    grid.text(paste("Name: ", file_name_no_ext, "\nRating: ", format(score_percentage_compare, nsmall = 2)), 
+              vp = viewport(layout.pos.row = (i - 1) %% num_per_row + 1, layout.pos.col = 2))
+}
+
+```
+
+
